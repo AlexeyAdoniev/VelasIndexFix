@@ -7,6 +7,8 @@ const drift = require('./drift')
 const web3 = require('web3')
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
+
+
 console.log(process.env);
 const Web3 = new web3(process.env['XDAI_NODE']);
 
@@ -25,6 +27,14 @@ const Tank = mongoose.model('eth-nft-dto', schema, 'eth-nft-dto');
 
 mongoose.connect(process.env['MONGO_URL'], (err) => {
     console.log(err)
+    
+})
+
+
+const express = require('express');
+const app = express();
+app.listen(process.env.PORT || 3000, () => {
+
     const p = async () => {
         const arr = new Array(200).fill(0).map((n,i) => i)
         console.log(arr)
@@ -62,4 +72,4 @@ mongoose.connect(process.env['MONGO_URL'], (err) => {
     setInterval(() => {
         p()
     }, 10000)
-})
+});
