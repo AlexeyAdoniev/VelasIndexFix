@@ -6,35 +6,31 @@ const web3 = require("web3");
 const fs = require("fs");
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 const { vlxToEth, ethToVlx } = require("./address");
+const { deepStrictEqual } = require("assert");
 
 const args = JSON.parse(process.argv[2]);
 
 const timeout = args.timeout;
 
-console.log(timeout);
 
-setTimeout(async () => {
+const schema = new mongoose.Schema({
+  chainId: "string",
+  tokenId: "string",
+  owner: "string",
+  contract: "string",
+  uri: "string",
+  name: "string",
+  contractType: "string",
+  symbol: "string",
+});
+const Tank = mongoose.model("eth-nft-dto", schema, "eth-nft-dto");
 
-    const schema = new mongoose.Schema({
-        chainId: "string",
-        tokenId: "string",
-        owner: "string",
-        contract: "string",
-        uri: "string",
-        name: "string",
-        contractType: "string",
-        symbol: "string",
-      });
-      const Tank = mongoose.model("eth-nft-dto", schema, "eth-nft-dto");
-      
-      mongoose.connect(process.env["MONGO_URL"], (err) => {
-        console.log(err);
-      });
-      
-      const Web3 = new web3(process.env['VELAS_NODE']);
+mongoose.connect(process.env["MONGO_URL"], (err) => {
+  console.log(err);
+});
 
-    
-const args = JSON.parse(process.argv[2]);
+const Web3 = new web3(process.env['VELAS_NODE']);
+
 
 const contractAddr = args.contract.toLowerCase();
 const file  = args.file;
@@ -43,11 +39,10 @@ const file  = args.file;
     path.resolve(__dirname, `./velas/${file}`),
     { encoding: "utf-8" }
   );
+
+ 
   
-  const from  = args.from;
-  const to  = args.to? args.to: ids.length - 1;
-  
-  ids = ids.split("\n").slice(from, to);
+  ids = ids.split("\n");
 
   ids = ids.map((id) => {
     const data = id.split(":-:");
@@ -57,35 +52,30 @@ const file  = args.file;
     };
   });
 
-  async function cycle(ids, start, end, docs) {
+  const contract = new Web3.eth.Contract(
+    drift,
+    contractAddr
+  );
 
-    const contract = new Web3.eth.Contract(
-        drift,
-        contractAddr
-      );
-  
+ 
 
-    const newDocs = [];
 
+
+  async function cycle(ids, start, end, docs, name, symbol) {
+
+   
+    
          
 
     for (let i = start; i < end; i++) {
         const item = ids[i];
         if (item) {
             try {
-                let [owner, name, symbol, uri] = await Promise.allSettled([
+                let [owner, uri] = await Promise.allSettled([
                     (async () => {
                         return await contract.methods.ownerOf(item.id).call();
                       })(),
 
-                    (async () => {
-                        return await contract.methods.name().call();
-                    })(),
-        
-                    (async () => {
-                        return await contract.methods.symbol().call();
-                    })(),
-        
                     (async () => {
                         return await contract.methods.tokenURI(item.id).call();
                     })(),
@@ -95,67 +85,64 @@ const file  = args.file;
                 ]).catch((e) => console.log(e))
         
                 if (
-                   owner.status === "fulfilled" && 
-                  name.status === "fulfilled" &&
-                  symbol.status === "fulfilled" &&
-                  uri.status === "fulfilled" 
-                  
+                   owner.status === "fulfilled"
                 ) {
 
                     const toDelete = docs.filter(doc => String(doc.tokenId) === String(item.id));
             
-                    await  Tank.deleteMany({_id:{$in:toDelete.map(d => d._id)}})
+                    await Tank.deleteMany({_id:{$in:toDelete.map(d => d._id)}})
 
-                    if (owner.value === '0x6449b68cc5675f6011e8DB681B142773A3157cb9') {
-                        console.log(owner.value);
-                    }
-
-                  newDocs.push(new Tank({
-                    name: name.value,
-                    symbol: symbol.value,
+                    await new Tank({
+                    name: name,
+                    symbol: symbol,
                     tokenId: item.id.toString(),
                     owner: owner.value.toString(),
                     chainId: "19",
                     contractType: "ERC721",
-                    uri: uri.value,
+                    uri: uri.value?  uri.value: toDelete.find(d => d.uri)?.uri,
                     contract: contractAddr.toLowerCase(),
-                  }))
+                  }).save();
 
                 } else {
-                    console.log(owner, 'error');
+                    //console.log(owner, 'error');
                 }
               } catch (err) {
-                console.log(err?.message, 'here');
+                //console.log(err?.message, 'here');
               }
         }
      
       }
 
-      await Tank.insertMany(newDocs)
+   
   }
 
+
+
+setTimeout(async () => {
+
+
   const p = async () => {
-    //const arr = new Array(200).fill(0).map((n,i) => i)
 
+    const name = await contract.methods.name().call();
+    const symbol = await contract.methods.symbol().call();
 
-
-
+   
     const docs = await Tank.find({
         // tokenId: item.id,
          chainId: "19",
          contract: contractAddr
        })
                                                                                               
-
-    const tasksNum = 10;
+    
+    const tasksNum = 50;
     const denominator = Math.ceil(ids.length/tasksNum);
     const tasks = new Array(tasksNum).fill(1).map((task, i) => {
 
         if (i * denominator > ids.length) return;
 
-        if ((i+1) * denominator > ids.length) return cycle(ids, i * denominator, ids.length, docs);
+        if ((i+1) * denominator > ids.length) return cycle(ids, i * denominator, ids.length, docs, name, symbol);
 
-        return cycle(ids, i * denominator, (i+1) * denominator, docs);
+        return cycle(ids, i * denominator, (i+1) * denominator, docs, name, symbol);
     })
    
     const tm = Date.now();
@@ -163,7 +150,7 @@ const file  = args.file;
     Promise.all(tasks).then(() => {
 
         console.log('finito ', file, `,time - ${(Date.now() - tm)/1000/60}`);
-
+        setTimeout(() => p())
     })
 
   
@@ -173,7 +160,7 @@ const file  = args.file;
 
   
 
-  p();
+  setTimeout(() => p())
 }, (timeout + Math.random()) * 1000);
 
 
