@@ -5,8 +5,6 @@ const drift = require("./drift");
 const web3 = require("web3");
 const fs = require("fs");
 dotenv.config({ path: path.resolve(__dirname, ".env") });
-const { vlxToEth, ethToVlx } = require("./address");
-const { deepStrictEqual } = require("assert");
 
 const args = JSON.parse(process.argv[2]);
 
